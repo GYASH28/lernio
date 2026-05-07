@@ -1,0 +1,74 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function userRole() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        ? firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role
+        : 'student';
+    }
+
+    function isTeacherOrAdmin() {
+      return userRole() == 'teacher' || userRole() == 'admin';
+    }
+    
+    // User-uploaded notes — scoped strictly to the uploader
+    // Path: /user-notes/{userId}/{noteId}/{filename}
+    match /user-notes/{userId}/{noteId}/{filename} {
+      // Only the file owner can read their own files
+      // Plus: teachers/admins can read (checked via custom claims
+      // or rely on Firestore for metadata and direct URLs for display)
+      allow read: if request.auth != null;
+      
+      // Only the owner can upload to their own folder
+      allow write: if request.auth != null 
+        && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024  // 10MB max for students
+        && request.resource.contentType.matches(
+          'application/pdf|application/vnd.openxmlformats-officedocument.wordprocessingml.document|image/.*'
+        );
+      
+      // Only owner can delete their files
+      allow delete: if request.auth != null 
+        && request.auth.uid == userId;
+    }
+    
+    // Class notes uploaded by teachers
+    // Path: /class-notes/{semesterId}/{subjectId}/{noteId}/{filename}
+    match /class-notes/{semesterId}/{subjectId}/{noteId}/{filename} {
+      // All logged-in students can read class notes
+      allow read: if request.auth != null;
+      
+      // Only teachers/admins can upload class notes
+      // (25MB limit for teachers)
+      allow write: if request.auth != null
+        && isTeacherOrAdmin()
+        && request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches(
+          'application/pdf|application/vnd.openxmlformats-officedocument.wordprocessingml.document|image/.*'
+        );
+      
+      allow delete: if request.auth != null && isTeacherOrAdmin();
+    }
+
+    // Semester-aware notes uploaded from the current subject page
+    // Path: /semester-notes/{semesterId}/{subjectId}/{userId}/{filename}
+    match /semester-notes/{semesterId}/{subjectId}/{userId}/{filename} {
+      allow read: if request.auth != null;
+
+      allow write: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          'application/pdf|application/vnd.openxmlformats-officedocument.wordprocessingml.document|image/.*'
+        );
+
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Block all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "redirects": [
+    { "source": "/dashboard", "destination": "/#/dashboard", "permanent": false },
+    { "source": "/login", "destination": "/#/login", "permanent": false },
+    { "source": "/notes", "destination": "/#/notes", "permanent": false },
+    { "source": "/quiz", "destination": "/#/quiz", "permanent": false },
+    { "source": "/analytics", "destination": "/#/analytics", "permanent": false },
+    { "source": "/settings", "destination": "/#/settings", "permanent": false },
+    { "source": "/semester-1", "destination": "/#/semester-1", "permanent": false },
+    { "source": "/semester-2", "destination": "/#/semester-2", "permanent": false },
+    { "source": "/semester-3", "destination": "/#/semester-3", "permanent": false },
+    { "source": "/semester-4", "destination": "/#/semester-4", "permanent": false },
+    { "source": "/semester-5", "destination": "/#/semester-5", "permanent": false },
+    { "source": "/semester-6", "destination": "/#/semester-6", "permanent": false }
+  ]
+}

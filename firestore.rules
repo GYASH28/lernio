@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isLoggedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+    
+    function hasUserDoc() {
+      return isLoggedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserRole() {
+      return hasUserDoc() ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role : 'student';
+    }
+    
+    function isTeacherOrAdmin() {
+      return getUserRole() == 'teacher' || getUserRole() == 'admin';
+    }
+    
+    function isAdmin() {
+      return getUserRole() == 'admin';
+    }
+
+    // Users collection
+    // Students can read/write their own doc; teachers/admins can read all
+    match /users/{userId} {
+      allow read: if isLoggedIn() && (isOwner(userId) || isTeacherOrAdmin());
+      allow create: if isLoggedIn() && isOwner(userId)
+        && request.resource.data.role == 'student';
+      allow update: if isLoggedIn() && (
+        (isOwner(userId) && request.resource.data.role == resource.data.role) ||
+        isTeacherOrAdmin()
+      );
+      allow delete: if isLoggedIn() && isAdmin();
+    }
+
+    // Semesters — everyone can read; only admin can change lock status
+    match /semesters/{semId} {
+      allow read: if isLoggedIn();
+      allow write: if isLoggedIn() && isAdmin();
+      
+      // Subjects inside semesters — everyone can read
+      match /subjects/{subjectId} {
+        allow read: if isLoggedIn();
+        allow write: if isLoggedIn() && isTeacherOrAdmin();
+      }
+    }
+
+    // User-uploaded notes — users can only manage their own notes
+    match /userNotes/{noteId} {
+      // Any logged-in user can read notes marked as public
+      allow read: if isLoggedIn() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.isPublic == true
+      );
+      // Only the note owner can create/update/delete
+      allow create: if isLoggedIn() && 
+        request.resource.data.userId == request.auth.uid &&
+        (request.resource.data.isPublic != true || isTeacherOrAdmin());
+      allow update: if isLoggedIn() && 
+        resource.data.userId == request.auth.uid;
+      allow delete: if isLoggedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isTeacherOrAdmin()
+      );
+    }
+
+    // Class notes uploaded by teachers — everyone reads, teachers write
+    match /classNotes/{noteId} {
+      allow read: if isLoggedIn();
+      allow create, update, delete: if isLoggedIn() && isTeacherOrAdmin();
+    }
+
+    // Announcements — everyone reads, teachers create, admin can delete
+    match /announcements/{announcementId} {
+      allow read: if isLoggedIn();
+      allow create, update: if isLoggedIn() && isTeacherOrAdmin();
+      allow delete: if isLoggedIn() && isTeacherOrAdmin();
+    }
+
+    // Quiz attempts — users manage their own
+    match /quizAttempts/{attemptId} {
+      allow read: if isLoggedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isTeacherOrAdmin()
+      );
+      allow create: if isLoggedIn() && 
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Attempts are immutable
+    }
+
+    // Cloud-synced local progress used by /api/progress
+    match /userProgress/{userId} {
+      allow read, write: if isLoggedIn() && isOwner(userId);
+    }
+
+    // Unauthorized access attempts log — admin read only
+    match /unauthorizedAttempts/{docId} {
+      allow read: if isLoggedIn() && isAdmin();
+      allow create: if isLoggedIn(); // Any user can create (for logging)
+      allow update, delete: if false;
+    }
+  }
+}
